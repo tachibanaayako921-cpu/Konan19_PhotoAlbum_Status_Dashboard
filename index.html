@@ -231,7 +231,7 @@
           <option value="">すべて</option>
           <option value="completed">完了のみ</option>
           <option value="inprogress">作業中・要仕分けのみ</option>
-          <option value="incomplete">未完了のみ</option>
+          <option value="incomplete">未完了・督促中のみ</option>
         </select>
       </div>
       <div>
@@ -273,9 +273,12 @@
 
   <script>
     const GAS_URL             = 'https://script.google.com/macros/s/AKfycbz-d22FbD85ANn4b9BSiofQr5tDqp-AHmHj3V1SJKAn4u99QoxNqZEmXBZpvnerJ-V68A/exec';
-    const STATUS_OPTIONS      = ["完全版", "完成品のみ（完成）", "未作成", "完成品のみ（未完成）", "作業中", "要仕分け"];
+    // 「督促中」を追加
+    const STATUS_OPTIONS      = ["完全版", "完成品のみ（完成）", "未作成", "完成品のみ（未完成）", "作業中", "要仕分け", "督促中"];
     const COMPLETED_STATUSES  = ["完全版", "完成品のみ（完成）"];
     const INPROGRESS_STATUSES = ["作業中", "要仕分け"];
+    // 督促中は未完了扱い（赤バッジ）のため INCOMPLETE_SPECIAL で識別
+    const INCOMPLETE_SPECIAL  = ["督促中"];
     const CORRECT_PASSWORD    = 'konan19';
 
     let allData       = null;
@@ -499,6 +502,7 @@
         if (filterFacility && item.facilityName !== filterFacility) return false;
         if (filterStatus === 'completed'  && !item.isCompleted) return false;
         if (filterStatus === 'inprogress' && !INPROGRESS_STATUSES.includes(item.status)) return false;
+        // 未完了・督促中のみ：完了でも作業中でもないもの
         if (filterStatus === 'incomplete' && (item.isCompleted || INPROGRESS_STATUSES.includes(item.status))) return false;
         if (filterSearch && !item.equipmentName.toLowerCase().includes(filterSearch)) return false;
         return true;
@@ -514,14 +518,30 @@
       }
 
       filtered.forEach(item => {
-        const isCompleted  = COMPLETED_STATUSES.includes(item.status);
-        const isInProgress = INPROGRESS_STATUSES.includes(item.status);
-        const badgeClass   = isCompleted ? 'badge-done' : isInProgress ? 'badge-inprogress' : 'badge-undone';
-        const badgeText    = isCompleted ? '✅ 完了'    : isInProgress ? '🔨 ' + item.status  : '⏳ 未完了';
-        const selectClass  = isCompleted ? 'completed'  : isInProgress ? 'inprogress'          : 'incomplete';
-        const lockedClass  = isUnlocked  ? ''           : 'select-locked';
-        const jpegClass    = item.hasJpeg ? 'badge-jpeg-yes' : 'badge-jpeg-no';
-        const jpegText     = item.hasJpeg ? '🖼️ JPEGデータ有' : '❌ JPEGデータ無';
+        const isCompleted         = COMPLETED_STATUSES.includes(item.status);
+        const isInProgress        = INPROGRESS_STATUSES.includes(item.status);
+        const isIncompleteSpecial = INCOMPLETE_SPECIAL.includes(item.status);
+
+        // バッジ：督促中は赤バッジ（badge-undone）＋ 📣 アイコン
+        const badgeClass = isCompleted
+          ? 'badge-done'
+          : isInProgress
+            ? 'badge-inprogress'
+            : 'badge-undone';
+
+        const badgeText = isCompleted
+          ? '✅ 完了'
+          : isInProgress
+            ? '🔨 ' + item.status
+            : isIncompleteSpecial
+              ? '📣 ' + item.status   // 督促中
+              : '⏳ 未完了';
+
+        // セレクト色：督促中は incomplete（赤）
+        const selectClass = isCompleted ? 'completed' : isInProgress ? 'inprogress' : 'incomplete';
+        const lockedClass = isUnlocked  ? '' : 'select-locked';
+        const jpegClass   = item.hasJpeg ? 'badge-jpeg-yes' : 'badge-jpeg-no';
+        const jpegText    = item.hasJpeg ? '🖼️ JPEGデータ有' : '❌ JPEGデータ無';
 
         const tr = document.createElement('tr');
         tr.id = `row-${item.rowIndex}`;
@@ -558,16 +578,23 @@
         return;
       }
 
-      const newStatus    = selectEl.value;
-      const isCompleted  = COMPLETED_STATUSES.includes(newStatus);
-      const isInProgress = INPROGRESS_STATUSES.includes(newStatus);
-      const selectClass  = isCompleted ? 'completed' : isInProgress ? 'inprogress' : 'incomplete';
+      const newStatus           = selectEl.value;
+      const isCompleted         = COMPLETED_STATUSES.includes(newStatus);
+      const isInProgress        = INPROGRESS_STATUSES.includes(newStatus);
+      const isIncompleteSpecial = INCOMPLETE_SPECIAL.includes(newStatus);
+      const selectClass         = isCompleted ? 'completed' : isInProgress ? 'inprogress' : 'incomplete';
 
       selectEl.className = `status-select ${selectClass}`;
 
       const badge = document.getElementById(`badge-${rowIndex}`);
       badge.className   = 'badge ' + (isCompleted ? 'badge-done' : isInProgress ? 'badge-inprogress' : 'badge-undone');
-      badge.textContent = isCompleted ? '✅ 完了' : isInProgress ? '🔨 ' + newStatus : '⏳ 未完了';
+      badge.textContent = isCompleted
+        ? '✅ 完了'
+        : isInProgress
+          ? '🔨 ' + newStatus
+          : isIncompleteSpecial
+            ? '📣 ' + newStatus   // 督促中
+            : '⏳ 未完了';
 
       const saveState = document.getElementById(`save-state-${rowIndex}`);
       saveState.textContent = '保存中...';
